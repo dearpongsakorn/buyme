@@ -1,14 +1,21 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="th" data-theme="dark">
 <head>
+<script>
+  /* กันจอขาววาบก่อน JS หลักทำงาน: โหมดมืดเป็นค่าเริ่มต้น */
+  try{
+    var _t = localStorage.getItem('money-theme') || 'dark';
+    if(_t === 'auto') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', _t);
+  }catch(e){}
+</script>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="เงินของฉัน">
-<meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#000000" id="metaTheme">
 <meta name="description" content="แอปบันทึกรายรับรายจ่าย คำนวณค่าใช้จ่ายจากเงินเดือนแต่ละเดือน ใช้งานออฟไลน์ ข้อมูลเก็บในเครื่อง">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -307,6 +314,28 @@
   .act-btn.cancel{font-weight:600;background:var(--elev);border-radius:14px}
   .act-btn:active{background:var(--fill-2)}
 
+  /* ================= couple / cloud ================= */
+  .avatar{
+    width:20px;height:20px;border-radius:10px;display:grid;place-items:center;flex:none;
+    font-size:10px;font-weight:700;color:#fff;letter-spacing:0;
+  }
+  .avatar.me{background:var(--tint)}
+  .avatar.partner{background:#FF9500}
+  :root[data-theme="dark"] .avatar.partner{background:#FF9F0A}
+  .tx .who{display:inline-flex;align-items:center;gap:4px;margin-right:5px;vertical-align:1px}
+  .code-box{
+    font-size:34px;font-weight:700;letter-spacing:.22em;text-align:center;padding:18px 0 6px;
+    font-variant-numeric:tabular-nums;
+  }
+  .sync-dot{width:8px;height:8px;border-radius:4px;background:var(--green);flex:none}
+  .sync-dot.off{background:var(--label-3)}
+  .sync-dot.pending{background:#FF9500}
+  .auth-in{
+    width:100%;background:none;border:0;font-size:17px;padding:12px 0;color:var(--label);
+  }
+  .auth-in:focus{outline:none}
+  .auth-err{color:var(--red);font-size:13.5px;padding:6px 20px 0;line-height:1.4}
+
   .toast{
     position:fixed;left:50%;top:calc(env(safe-area-inset-top) + 8px);transform:translate(-50%,-14px);
     background:color-mix(in srgb, var(--elev) 94%, transparent);
@@ -339,9 +368,17 @@
         </button>
       </div>
 
+      <div id="scopeWrap" style="display:none;padding:0 16px 12px">
+        <div class="seg" id="scopeSeg">
+          <button data-t="me" aria-pressed="true">ของฉัน</button>
+          <button data-t="partner" aria-pressed="false" id="scopePartnerBtn">ของแฟน</button>
+          <button data-t="both" aria-pressed="false">รวมกัน</button>
+        </div>
+      </div>
+
       <div class="budget">
         <div class="b-top">
-          <span class="lbl">เงินเดือนเดือนนี้</span>
+          <span class="lbl" id="salaryLabel">เงินเดือนเดือนนี้</span>
           <button class="b-salary" id="editSalary">
             <span id="salaryVal">ตั้งค่า</span>
             <svg width="8" height="13" viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L6.5 6.5l-5 5"/></svg>
@@ -409,6 +446,10 @@
     <!-- ==================== SETTINGS ==================== -->
     <section class="screen" id="s-more">
       <h1 class="large-title">ตั้งค่า</h1>
+
+      <div class="hdr-s">บัญชีและการใช้ร่วมกัน</div>
+      <div class="group" id="accountGroup"></div>
+      <div class="hint" id="accountHint" style="margin-top:-12px;margin-bottom:6px"></div>
 
       <div class="hdr-s">งบประมาณ</div>
       <div class="group">
@@ -546,6 +587,75 @@
   </div>
 </div>
 
+<!-- ===== auth sheet ===== -->
+<div class="sheet" id="authSheet" role="dialog" aria-modal="true">
+  <div class="grabber"></div>
+  <div class="sheet-nav">
+    <button id="closeAuth">ยกเลิก</button>
+    <span class="t" id="authTitle">เข้าสู่ระบบ</span>
+    <button id="doAuth" class="strong">ถัดไป</button>
+  </div>
+  <div class="sheet-body">
+    <div style="padding:2px 16px 0">
+      <div class="seg" id="authSeg">
+        <button data-t="in" aria-pressed="true">เข้าสู่ระบบ</button>
+        <button data-t="up" aria-pressed="false">สมัครสมาชิก</button>
+      </div>
+    </div>
+    <div class="hint" id="authIntro">เข้าสู่ระบบเพื่อซิงก์ข้อมูลขึ้นคลาวด์ และแชร์รายรับรายจ่ายกับแฟนของคุณ</div>
+    <div class="group" style="margin-top:12px">
+      <div class="field-row" id="nameRow" style="display:none">
+        <span class="fl">ชื่อ</span><input id="authName" class="auth-in" type="text" placeholder="ชื่อที่ให้แฟนเห็น" style="text-align:right" autocomplete="name">
+      </div>
+      <div class="field-row">
+        <span class="fl">อีเมล</span><input id="authEmail" class="auth-in" type="email" placeholder="you@email.com" style="text-align:right" autocomplete="email" inputmode="email">
+      </div>
+      <div class="field-row">
+        <span class="fl">รหัสผ่าน</span><input id="authPass" class="auth-in" type="password" placeholder="อย่างน้อย 6 ตัว" style="text-align:right" autocomplete="current-password">
+      </div>
+    </div>
+    <div class="auth-err" id="authErr" style="display:none"></div>
+    <div style="padding:6px 16px 0">
+      <button class="btn-fill" id="authSubmit" style="width:100%;margin:0">เข้าสู่ระบบ</button>
+    </div>
+    <div class="hint" id="authFoot">ข้อมูลที่บันทึกไว้ในเครื่องจะถูกย้ายขึ้นคลาวด์ให้อัตโนมัติเมื่อเข้าสู่ระบบครั้งแรก</div>
+  </div>
+</div>
+
+<!-- ===== invite / join sheet ===== -->
+<div class="sheet" id="inviteSheet" role="dialog" aria-modal="true">
+  <div class="grabber"></div>
+  <div class="sheet-nav">
+    <button id="closeInvite">เสร็จสิ้น</button>
+    <span class="t">ใช้ร่วมกับแฟน</span>
+    <span style="width:60px"></span>
+  </div>
+  <div class="sheet-body">
+    <div class="hdr-s">รหัสเชิญของคุณ</div>
+    <div class="group">
+      <div class="code-box" id="inviteCode">------</div>
+      <div class="hint" style="padding:0 20px 14px;text-align:center">ให้แฟนกรอกรหัสนี้ในช่องด้านล่างของเครื่องเขา แล้วจะเห็นรายการของกันและกันทันที</div>
+      <button class="row" id="copyCode"><span style="flex:1;color:var(--tint);text-align:center">คัดลอกรหัส</span></button>
+    </div>
+
+    <div class="hdr-s">เข้าร่วมด้วยรหัสของอีกฝ่าย</div>
+    <div class="group">
+      <div class="field-row">
+        <span class="fl">รหัส</span>
+        <input id="joinCode" class="auth-in" type="text" placeholder="ABC123" maxlength="6"
+               style="text-align:right;text-transform:uppercase;letter-spacing:.12em" autocomplete="off">
+      </div>
+    </div>
+    <div style="padding:2px 16px 0">
+      <button class="btn-fill" id="doJoin" style="width:100%;margin:0">เข้าร่วม</button>
+    </div>
+    <div class="hint">เมื่อเข้าร่วมแล้ว รายการเก่าของคุณจะยังอยู่ครบ และทั้งคู่จะเห็นรายการของกันและกัน แต่แก้ไขได้เฉพาะของตัวเอง</div>
+    <div style="padding:14px 16px 0" id="leaveWrap" hidden>
+      <button class="btn-row destructive" id="doLeave">แยกกระเป๋าออกจากกัน</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== action sheet ===== -->
 <div class="action" id="actionSheet">
   <div class="act-card">
@@ -605,18 +715,226 @@
   }
   function save(){ store.set(KEY, JSON.stringify(state)); }
 
+  /* ================= คลาวด์ (Supabase REST) ================= */
+  var CLOUD = {
+    url: 'https://nvagsyvueppkjrcyinqu.supabase.co',
+    key: 'sb_publishable_zeT-MWTRi0q58aI_NBYcmw_SlVDpQrU'
+  };
+  var SKEY='money-session', OKEY='money-outbox';
+  var cloud = { session:null, profile:null, partner:null, household:null,
+                partnerSalary:{def:0,months:{}}, outbox:[], syncing:false, lastErr:null };
+
+  function isCloud(){ return !!(cloud.session && cloud.profile); }
+  function myId(){ return isCloud() ? cloud.profile.id : 'me'; }
+  function hasPartner(){ return isCloud() && !!cloud.partner; }
+  function isMine(t){ return !t.user_id || t.user_id === myId(); }
+  function partnerName(){ return hasPartner() ? (cloud.partner.display_name||'แฟน') : 'แฟน'; }
+  function initial(n){ return (String(n||'?').trim()[0]||'?').toUpperCase(); }
+
+  function sbFetch(path, opts){
+    opts = opts || {};
+    var h = {'apikey':CLOUD.key, 'Content-Type':'application/json'};
+    if(opts.headers) for(var k in opts.headers) h[k]=opts.headers[k];
+    if(cloud.session && cloud.session.access_token) h['Authorization']='Bearer '+cloud.session.access_token;
+    return fetch(CLOUD.url+path, {
+      method: opts.method||'GET', headers:h,
+      body: opts.body!==undefined ? JSON.stringify(opts.body) : undefined
+    }).then(function(r){
+      if(r.status===401 && cloud.session && cloud.session.refresh_token && !opts._retry){
+        return refreshSession().then(function(){ opts._retry=true; return sbFetch(path,opts); });
+      }
+      return r.text().then(function(txt){
+        var d=null; try{ d = txt ? JSON.parse(txt) : null; }catch(e){}
+        if(!r.ok){
+          var msg = (d && (d.msg || d.message || d.error_description || d.error_code || d.error)) || ('HTTP '+r.status);
+          var err = new Error(msg); err.status=r.status; err.data=d; throw err;
+        }
+        return d;
+      });
+    });
+  }
+
+  function setSession(s){
+    if(!s){ cloud.session=null; store.set(SKEY,''); return; }
+    if(s.expires_in && !s.expires_at) s.expires_at = Math.floor(Date.now()/1000) + s.expires_in;
+    cloud.session = s; store.set(SKEY, JSON.stringify(s));
+  }
+  function refreshSession(){
+    var rt = cloud.session && cloud.session.refresh_token;
+    if(!rt) return Promise.reject(new Error('no refresh token'));
+    var s = cloud.session; cloud.session = null;
+    return sbFetch('/auth/v1/token?grant_type=refresh_token',{method:'POST',body:{refresh_token:rt}})
+      .then(function(d){ setSession(d); return d; })
+      .catch(function(e){ cloud.session = s; throw e; });
+  }
+  function signUp(email,pass,name){
+    return sbFetch('/auth/v1/signup',{method:'POST',body:{email:email,password:pass,data:{display_name:name}}});
+  }
+  function signIn(email,pass){
+    return sbFetch('/auth/v1/token?grant_type=password',{method:'POST',body:{email:email,password:pass}});
+  }
+  function signOutCloud(){
+    var p = cloud.session ? sbFetch('/auth/v1/logout',{method:'POST',body:{}}).catch(function(){}) : Promise.resolve();
+    return p.then(function(){
+      setSession(null);
+      cloud.profile=null; cloud.partner=null; cloud.household=null;
+      cloud.partnerSalary={def:0,months:{}}; cloud.outbox=[]; store.set(OKEY,'[]');
+      state.tx=[]; state.cats=defaultCats(); state.salary={def:0,months:{}};
+      save();
+    });
+  }
+
+  /* ---------- แปลงข้อมูล ---------- */
+  function rowToTx(r){
+    return { id:r.id, user_id:r.user_id, type:r.type, amount:Number(r.amount),
+             cat:r.cat_id, catName:r.cat_name, catIcon:r.cat_icon,
+             date:r.date, note:r.note||'', ts:Date.parse(r.created_at)||0 };
+  }
+  function txToRow(t){
+    var c = txCat(t);
+    return { id:t.id, user_id:myId(), type:t.type, amount:t.amount,
+             cat_id: isUuid(t.cat) ? t.cat : null,
+             cat_name:c.name, cat_icon:c.icon, date:t.date, note:t.note||'' };
+  }
+  function isUuid(v){ return typeof v==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v); }
+
+  /* ---------- ดึงข้อมูลจากคลาวด์ ---------- */
+  function cloudPull(){
+    return Promise.all([
+      sbFetch('/rest/v1/profiles?select=*'),
+      sbFetch('/rest/v1/households?select=*'),
+      sbFetch('/rest/v1/categories?select=*&order=sort.asc,created_at.asc'),
+      sbFetch('/rest/v1/salary_overrides?select=*'),
+      sbFetch('/rest/v1/transactions?select=*&order=date.desc,created_at.desc')
+    ]).then(function(r){
+      var profiles=r[0]||[], households=r[1]||[], cats=r[2]||[], sals=r[3]||[], txs=r[4]||[];
+      var uid = cloud.session.user ? cloud.session.user.id : (cloud.profile && cloud.profile.id);
+      cloud.profile = profiles.filter(function(p){ return p.id===uid; })[0] || cloud.profile;
+      cloud.partner = profiles.filter(function(p){ return p.id!==uid; })[0] || null;
+      cloud.household = households[0] || null;
+
+      var mine = cats.filter(function(c){ return c.user_id===uid; });
+      if(mine.length) state.cats = mine.map(function(c){ return {id:c.id,type:c.type,icon:c.icon,name:c.name}; });
+
+      state.salary = { def: Number(cloud.profile ? cloud.profile.default_salary : 0)||0, months:{} };
+      cloud.partnerSalary = { def: Number(cloud.partner ? cloud.partner.default_salary : 0)||0, months:{} };
+      sals.forEach(function(s){
+        var box = (s.user_id===uid) ? state.salary.months : cloud.partnerSalary.months;
+        box[s.ym] = Number(s.amount)||0;
+      });
+
+      state.tx = txs.map(rowToTx);
+      save();
+      return true;
+    });
+  }
+
+  /* ---------- ย้ายข้อมูลในเครื่องขึ้นคลาวด์ (เฉพาะบัญชีที่ยังว่าง) ---------- */
+  function migrateLocal(snap){
+    if(!snap || (!snap.tx.length && !(snap.salary && snap.salary.def))) return Promise.resolve(false);
+    return Promise.all([
+      sbFetch('/rest/v1/transactions?select=id&limit=1'),
+      sbFetch('/rest/v1/categories?select=id&limit=1&user_id=eq.'+myId())
+    ]).then(function(r){
+      var hasTx=(r[0]||[]).length, hasCat=(r[1]||[]).length;
+      if(hasTx || hasCat) return false;
+
+      var map={}, catRows = snap.cats.map(function(c,i){
+        var nid = isUuid(c.id) ? c.id : uuid();
+        map[c.id]=nid;
+        return {id:nid, user_id:myId(), type:c.type, name:c.name, icon:c.icon, sort:i};
+      });
+      var txRows = snap.tx.map(function(t){
+        var oc=null;
+        for(var i=0;i<snap.cats.length;i++) if(snap.cats[i].id===t.cat) oc=snap.cats[i];
+        return { id: isUuid(t.id)?t.id:uuid(), user_id:myId(), type:t.type, amount:t.amount,
+                 cat_id: map[t.cat] || null, cat_name: oc?oc.name:'ไม่ระบุ', cat_icon: oc?oc.icon:'📦',
+                 date:t.date, note:t.note||'' };
+      });
+      var salRows = Object.keys((snap.salary&&snap.salary.months)||{}).map(function(ym){
+        return {user_id:myId(), ym:ym, amount:snap.salary.months[ym]};
+      });
+
+      var jobs = [];
+      if(catRows.length) jobs.push(sbFetch('/rest/v1/categories',{method:'POST',headers:{'Prefer':'return=minimal'},body:catRows}));
+      if(snap.salary && snap.salary.def) jobs.push(sbFetch('/rest/v1/profiles?id=eq.'+myId(),{method:'PATCH',headers:{'Prefer':'return=minimal'},body:{default_salary:snap.salary.def}}));
+      return Promise.all(jobs).then(function(){
+        var more=[];
+        if(txRows.length) more.push(sbFetch('/rest/v1/transactions',{method:'POST',headers:{'Prefer':'return=minimal'},body:txRows}));
+        if(salRows.length) more.push(sbFetch('/rest/v1/salary_overrides',{method:'POST',headers:{'Prefer':'return=minimal'},body:salRows}));
+        return Promise.all(more);
+      }).then(function(){ return true; });
+    }).catch(function(){ return false; });
+  }
+
+  /* ---------- คิวงานเขียน (ทำงานต่อได้แม้เน็ตหลุด) ---------- */
+  function loadOutbox(){ try{ cloud.outbox = JSON.parse(store.get(OKEY)||'[]')||[]; }catch(e){ cloud.outbox=[]; } }
+  function saveOutbox(){ store.set(OKEY, JSON.stringify(cloud.outbox)); }
+  function enqueue(op){ if(!isCloud()) return; cloud.outbox.push(op); saveOutbox(); renderSync(); flush(); }
+
+  function runOp(op){
+    var min = {'Prefer':'return=minimal'};
+    var merge = {'Prefer':'resolution=merge-duplicates,return=minimal'};
+    if(op.k==='tx-up')  return sbFetch('/rest/v1/transactions?on_conflict=id',{method:'POST',headers:merge,body:op.row});
+    if(op.k==='tx-del') return sbFetch('/rest/v1/transactions?id=eq.'+op.id,{method:'DELETE',headers:min});
+    if(op.k==='cat-up') return sbFetch('/rest/v1/categories?on_conflict=id',{method:'POST',headers:merge,body:op.row});
+    if(op.k==='cat-del')return sbFetch('/rest/v1/categories?id=eq.'+op.id,{method:'DELETE',headers:min});
+    if(op.k==='sal-def')return sbFetch('/rest/v1/profiles?id=eq.'+myId(),{method:'PATCH',headers:min,body:{default_salary:op.v}});
+    if(op.k==='sal-up') return sbFetch('/rest/v1/salary_overrides?on_conflict=user_id,ym',{method:'POST',headers:merge,body:op.row});
+    if(op.k==='sal-del')return sbFetch('/rest/v1/salary_overrides?user_id=eq.'+myId()+'&ym=eq.'+op.ym,{method:'DELETE',headers:min});
+    if(op.k==='name')   return sbFetch('/rest/v1/profiles?id=eq.'+myId(),{method:'PATCH',headers:min,body:{display_name:op.v}});
+    if(op.k==='wipe')   return sbFetch('/rest/v1/transactions?user_id=eq.'+myId(),{method:'DELETE',headers:min});
+    return Promise.resolve();
+  }
+
+  function flush(){
+    if(!isCloud() || cloud.syncing || !cloud.outbox.length) return Promise.resolve();
+    if(navigator.onLine === false) return Promise.resolve();
+    cloud.syncing = true; renderSync();
+    var op = cloud.outbox[0];
+    return runOp(op).then(function(){
+      cloud.outbox.shift(); saveOutbox(); cloud.syncing=false; cloud.lastErr=null; renderSync();
+      if(cloud.outbox.length) return flush();
+    }).catch(function(e){
+      cloud.syncing=false; cloud.lastErr=e.message||'sync error';
+      if(e.status && e.status>=400 && e.status<500 && e.status!==401 && e.status!==408 && e.status!==429){
+        cloud.outbox.shift(); saveOutbox();   /* งานนี้ผิดพลาดถาวร ไม่ให้คิวค้าง */
+      }
+      renderSync();
+    });
+  }
+
+  function silentSync(){
+    if(!isCloud() || document.hidden) return;
+    flush().then(function(){
+      if(!cloud.outbox.length) return cloudPull().then(function(){ renderAll(); renderAccount(); });
+    }).catch(function(){});
+  }
+
   /* ---------------- helpers ---------------- */
   var $=function(s){return document.querySelector(s);};
   var $$=function(s){return Array.prototype.slice.call(document.querySelectorAll(s));};
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
-  function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+  function uuid(){
+    if(window.crypto && crypto.randomUUID) return crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+      var r=Math.random()*16|0, v=(c==='x')?r:((r&0x3)|0x8); return v.toString(16);
+    });
+  }
+  var uid = uuid;
   function nf(v){ return Math.abs(Number(v)||0).toLocaleString('th-TH',{minimumFractionDigits:(Math.abs(v)%1?2:0),maximumFractionDigits:2}); }
   function money(v){ return '฿ '+nf(v); }
   function todayISO(d){ d=d||new Date();
     return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function catOf(id){ for(var i=0;i<state.cats.length;i++) if(state.cats[i].id===id) return state.cats[i];
     return {icon:'📦',name:'ไม่ระบุ',id:id,type:'expense'}; }
+  /* ชื่อ/ไอคอนหมวดของรายการ — ใช้ค่าที่บันทึกติดมากับรายการก่อน (รายการของแฟนใช้หมวดของเขา) */
+  function txCat(t){
+    for(var i=0;i<state.cats.length;i++) if(state.cats[i].id===t.cat) return state.cats[i];
+    if(t.catName) return {icon:t.catIcon||'📦', name:t.catName, id:t.cat};
+    return {icon:'📦', name:'ไม่ระบุ', id:t.cat};
+  }
   function toast(m){ var t=$('#toast'); t.textContent=m; t.classList.add('show');
     clearTimeout(toast._t); toast._t=setTimeout(function(){t.classList.remove('show');},1800); }
   function haptic(){ if(navigator.vibrate) try{navigator.vibrate(8);}catch(e){} }
@@ -636,7 +954,7 @@
 
   /* ---------------- view ---------------- */
   var now=new Date();
-  var view={ screen:'home', y:now.getFullYear(), m:now.getMonth(), bd:'expense', hf:'all', cf:'expense', q:'' };
+  var view={ screen:'home', y:now.getFullYear(), m:now.getMonth(), bd:'expense', hf:'all', cf:'expense', q:'', scope:'both' };
   function mkey(y,m){ return y+'-'+String(m+1).padStart(2,'0'); }
   function isThisMonth(){ var n=new Date(); return n.getFullYear()===view.y && n.getMonth()===view.m; }
   function inMonth(t){ var p=t.date.split('-'); return (+p[0])===view.y && (+p[1]-1)===view.m; }
@@ -645,12 +963,24 @@
     var k=mkey(y,m);
     return (k in state.salary.months) ? +state.salary.months[k] : (+state.salary.def||0);
   }
+  function partnerSalaryOf(y,m){
+    var s=cloud.partnerSalary, k=mkey(y,m);
+    return (k in s.months) ? +s.months[k] : (+s.def||0);
+  }
+  function scope(){ return hasPartner() ? view.scope : 'me'; }
+  function inScope(t){
+    var s=scope();
+    return s==='both' ? true : (s==='me' ? isMine(t) : !isMine(t));
+  }
 
   /* ---------------- budget calc ---------------- */
   function calc(){
-    var list=monthTx(), exp=0, inc=0;
+    var list=monthTx().filter(inScope), exp=0, inc=0;
     list.forEach(function(t){ if(t.type==='income') inc+=t.amount; else exp+=t.amount; });
-    var sal=salaryOf(view.y,view.m);
+    var s=scope();
+    var sal = s==='me' ? salaryOf(view.y,view.m)
+            : s==='partner' ? partnerSalaryOf(view.y,view.m)
+            : salaryOf(view.y,view.m) + partnerSalaryOf(view.y,view.m);
     var budget=sal+inc;
     var remain=budget-exp;
     var pct=budget>0 ? Math.min(100, Math.round(exp/budget*100)) : 0;
@@ -668,8 +998,25 @@
     $('#todayBtn').style.display = isThisMonth() ? 'none' : 'block';
   }
 
+  function renderScope(){
+    var on = hasPartner();
+    $('#scopeWrap').style.display = on ? 'block' : 'none';
+    if(on){
+      $('#scopePartnerBtn').textContent = 'ของ'+partnerName();
+      $('#scopeSeg').querySelectorAll('button').forEach(function(b){
+        b.setAttribute('aria-pressed', String(b.dataset.t===view.scope));
+      });
+    }
+  }
+
   function renderBudget(){
-    var c=calc();
+    var c=calc(), s=scope();
+    $('#salaryLabel').textContent = s==='me' ? 'เงินเดือนเดือนนี้'
+      : (s==='partner' ? ('เงินเดือนของ'+partnerName()) : 'เงินเดือนรวมของเรา');
+    var chip=$('#editSalary');
+    chip.style.pointerEvents = (s==='me') ? 'auto' : 'none';
+    chip.style.color = (s==='me') ? 'var(--tint)' : 'var(--label-2)';
+    chip.querySelector('svg').style.display = (s==='me') ? '' : 'none';
     $('#salaryVal').textContent = c.sal>0 ? money(c.sal) : 'ตั้งค่า';
     $('#defSalary').textContent = state.salary.def>0 ? money(state.salary.def) : 'ยังไม่ตั้ง';
 
@@ -712,23 +1059,28 @@
   function renderBreakdown(){
     var type=view.bd, c=calc();
     var list=c.list.filter(function(t){ return t.type===type; });
+    var byName = {};
     var box=$('#breakdown');
     if(!list.length){
       box.innerHTML='<div class="empty" style="padding:30px 16px"><p>ยังไม่มี'+(type==='expense'?'รายจ่าย':'รายรับเพิ่ม')+'ในเดือนนี้</p></div>';
       return;
     }
-    var by={}; list.forEach(function(t){ by[t.cat]=(by[t.cat]||0)+t.amount; });
-    var rows=Object.keys(by).map(function(k){return {cat:k,amt:by[k]};}).sort(function(a,b){return b.amt-a.amt;});
+    var by={};
+    list.forEach(function(t){
+      var k=txCat(t); var key=k.name;
+      if(!by[key]) by[key]={amt:0, icon:k.icon, name:k.name};
+      by[key].amt += t.amount;
+    });
+    var rows=Object.keys(by).map(function(k){return by[k];}).sort(function(a,b){return b.amt-a.amt;});
     var total=rows.reduce(function(s,r){return s+r.amt;},0);
     var base = (type==='expense' && c.budget>0) ? c.budget : total;
     var color = type==='expense' ? 'var(--red)' : 'var(--green)';
     box.innerHTML = rows.map(function(r){
-      var k=catOf(r.cat);
       var pct = total ? Math.round(r.amt/total*100) : 0;
       var w = total ? Math.max(2, r.amt/rows[0].amt*100) : 0;
       return '<div class="bd-row"><div class="bd-head">'+
-        '<span class="ic" style="background:var(--fill)">'+esc(k.icon)+'</span>'+
-        '<span class="nm">'+esc(k.name)+'</span>'+
+        '<span class="ic" style="background:var(--fill)">'+esc(r.icon)+'</span>'+
+        '<span class="nm">'+esc(r.name)+'</span>'+
         '<span class="amt">'+money(r.amt)+'</span>'+
         '<span class="pct">'+pct+'%</span></div>'+
         '<div class="bd-track"><div class="bd-fill" style="width:'+w+'%;background:'+color+'"></div></div></div>';
@@ -741,11 +1093,17 @@
   }
 
   function txRowHTML(t){
-    var k=catOf(t.cat), isIn=t.type==='income';
+    var k=txCat(t), isIn=t.type==='income';
+    var who='';
+    if(hasPartner()){
+      var mine=isMine(t);
+      var nm = mine ? (cloud.profile.display_name||'ฉัน') : partnerName();
+      who = '<span class="who"><i class="avatar '+(mine?'me':'partner')+'">'+esc(initial(nm))+'</i>'+esc(nm)+'</span> · ';
+    }
     return '<button class="row inset tx" data-id="'+t.id+'">'+
       '<span class="ic" style="background:var(--fill)">'+esc(k.icon)+'</span>'+
       '<span class="mid"><span class="t1">'+esc(t.note||k.name)+'</span>'+
-      '<span class="t2">'+esc(k.name)+'</span></span>'+
+      '<span class="t2">'+who+esc(k.name)+'</span></span>'+
       '<span class="val" style="color:'+(isIn?'var(--green)':'var(--label)')+'">'+
       (isIn?'+':'-')+money(t.amount)+'</span></button>';
   }
@@ -764,7 +1122,7 @@
   }
 
   function renderHome(){
-    renderMonth(); renderBudget(); renderBreakdown();
+    renderMonth(); renderScope(); renderBudget(); renderBreakdown();
     renderGrouped($('#homeList'), calc().list,
       '<div class="empty"><div class="e-ic">🧾</div><p>ยังไม่มีรายการในเดือนนี้</p><p style="font-size:13px">แตะปุ่ม + ด้านล่างเพื่อบันทึก</p></div>');
   }
@@ -774,7 +1132,7 @@
     var list=state.tx.filter(function(t){
       if(view.hf!=='all' && t.type!==view.hf) return false;
       if(!q) return true;
-      var k=catOf(t.cat);
+      var k=txCat(t);
       return (t.note||'').toLowerCase().indexOf(q)>-1 || k.name.toLowerCase().indexOf(q)>-1;
     });
     renderGrouped($('#histList'),list,
@@ -797,7 +1155,7 @@
     if(view.screen==='home') renderHome();
     else if(view.screen==='history') renderHistory();
     else if(view.screen==='cats') renderCats();
-    else renderBudget();
+    else { renderBudget(); renderAccount(); }
   }
 
   /* ---------------- navigation ---------------- */
@@ -833,6 +1191,7 @@
   segBind('#bdSeg',function(t){ view.bd=t; renderBreakdown(); });
   segBind('#hSeg',function(t){ view.hf=t; renderHistory(); });
   segBind('#cSeg',function(t){ view.cf=t; renderCats(); });
+  segBind('#scopeSeg',function(t){ view.scope=t; renderHome(); });
   $('#q').addEventListener('input',function(e){ view.q=e.target.value; renderHistory(); });
 
   /* ---------------- sheets ---------------- */
@@ -908,7 +1267,9 @@
   document.addEventListener('click',function(e){
     var row=e.target.closest('.tx'); if(!row) return;
     var t=state.tx.filter(function(x){return x.id===row.dataset.id;})[0];
-    if(t) openTx(t);
+    if(!t) return;
+    if(!isMine(t)){ toast('รายการของ'+partnerName()+' แก้ไขได้เฉพาะเจ้าของ'); return; }
+    openTx(t);
   });
 
   function numOnly(e){ e.target.value=e.target.value.replace(/[^0-9.]/g,'').replace(/(\..*)\./g,'$1'); }
@@ -919,21 +1280,29 @@
     if(!(amount>0)){ toast('กรุณากรอกจำนวนเงิน'); $('#amt').focus(); return; }
     if(!draft.cat){ toast('กรุณาเลือกหมวดหมู่'); return; }
     var date=$('#date').value||todayISO(), note=$('#note').value.trim();
+    var rec;
     if(editing){
       editing.type=draft.type; editing.amount=amount; editing.cat=draft.cat; editing.date=date; editing.note=note;
-      toast('แก้ไขแล้ว');
+      var kc=catOf(draft.cat); editing.catName=kc.name; editing.catIcon=kc.icon;
+      rec=editing; toast('แก้ไขแล้ว');
     } else {
-      state.tx.push({id:uid(),ts:Date.now(),type:draft.type,amount:amount,cat:draft.cat,date:date,note:note});
+      var kc2=catOf(draft.cat);
+      rec={id:uid(),ts:Date.now(),user_id:myId(),type:draft.type,amount:amount,cat:draft.cat,
+           catName:kc2.name,catIcon:kc2.icon,date:date,note:note};
+      state.tx.push(rec);
       toast(draft.type==='income'?'บันทึกรายรับแล้ว':'บันทึกรายจ่ายแล้ว');
       var p=date.split('-'); view.y=+p[0]; view.m=+p[1]-1;
     }
+    if(isCloud()) enqueue({k:'tx-up', row:txToRow(rec)});
     save(); hideSheets(); haptic(); renderAll();
   });
 
   $('#delTx').addEventListener('click',function(){
     if(!editing) return;
     confirmAction('ลบรายการนี้ถาวร?','ลบรายการ',function(){
-      state.tx=state.tx.filter(function(t){return t.id!==editing.id;});
+      var id=editing.id;
+      state.tx=state.tx.filter(function(t){return t.id!==id;});
+      if(isCloud()) enqueue({k:'tx-del', id:id});
       save(); hideSheets(); renderAll(); toast('ลบแล้ว');
     });
   });
@@ -966,11 +1335,20 @@
   });
   $('#saveSal').addEventListener('click',function(){
     var v=parseFloat($('#salAmt').value)||0;
-    if(salScope==='all') state.salary.def=v; else state.salary.months[mkey(view.y,view.m)]=v;
+    if(salScope==='all'){
+      state.salary.def=v;
+      if(isCloud()) enqueue({k:'sal-def', v:v});
+    } else {
+      var ym=mkey(view.y,view.m);
+      state.salary.months[ym]=v;
+      if(isCloud()) enqueue({k:'sal-up', row:{user_id:myId(), ym:ym, amount:v}});
+    }
     save(); hideSheets(); renderAll(); toast('บันทึกเงินเดือนแล้ว');
   });
   $('#clearSalMonth').addEventListener('click',function(){
-    delete state.salary.months[mkey(view.y,view.m)];
+    var ym=mkey(view.y,view.m);
+    delete state.salary.months[ym];
+    if(isCloud()) enqueue({k:'sal-del', ym:ym});
     save(); hideSheets(); renderAll(); toast('กลับไปใช้ค่าเริ่มต้น');
   });
 
@@ -1002,25 +1380,31 @@
   $('#saveCat').addEventListener('click',function(){
     var name=$('#catName').value.trim();
     if(!name){ toast('กรุณาตั้งชื่อหมวดหมู่'); $('#catName').focus(); return; }
-    if(catDraft.id){ var c=catOf(catDraft.id); c.name=name; c.icon=catDraft.icon; toast('แก้ไขแล้ว'); }
-    else { state.cats.push({id:uid(),type:view.cf,icon:catDraft.icon,name:name}); toast('เพิ่มหมวดหมู่แล้ว'); }
+    var rec;
+    if(catDraft.id){ rec=catOf(catDraft.id); rec.name=name; rec.icon=catDraft.icon; toast('แก้ไขแล้ว'); }
+    else { rec={id:uid(),type:view.cf,icon:catDraft.icon,name:name}; state.cats.push(rec); toast('เพิ่มหมวดหมู่แล้ว'); }
+    if(isCloud()) enqueue({k:'cat-up', row:{id:rec.id,user_id:myId(),type:rec.type,name:rec.name,icon:rec.icon,
+      sort:state.cats.indexOf(rec)}});
     save(); hideSheets(); renderCats();
   });
   $('#delCat').addEventListener('click',function(){
     var id=catDraft.id; if(!id) return;
     var used=state.tx.filter(function(t){return t.cat===id;}).length;
-    confirmAction(used?('หมวดนี้มี '+used+' รายการ รายการจะแสดงเป็น "ไม่ระบุ"'):'ลบหมวดหมู่นี้?','ลบหมวดหมู่',function(){
+    confirmAction(used?('หมวดนี้มี '+used+' รายการ ชื่อหมวดในรายการเดิมจะยังอยู่'):'ลบหมวดหมู่นี้?','ลบหมวดหมู่',function(){
       state.cats=state.cats.filter(function(c){return c.id!==id;});
+      if(isCloud()) enqueue({k:'cat-del', id:id});
       save(); hideSheets(); renderCats(); toast('ลบแล้ว');
     });
   });
 
   /* ---------------- theme ---------------- */
   function applyTheme(){
-    var t=store.get('money-theme')||'auto';
+    var t=store.get('money-theme')||'dark';
     if(t==='auto') document.documentElement.removeAttribute('data-theme');
     else document.documentElement.setAttribute('data-theme',t);
     $('#themeSeg').querySelectorAll('button').forEach(function(b){ b.setAttribute('aria-pressed',String(b.dataset.t===t)); });
+    var dark = t==='dark' || (t==='auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    var mt=document.getElementById('metaTheme'); if(mt) mt.setAttribute('content', dark?'#000000':'#F2F2F7');
   }
   $('#themeSeg').addEventListener('click',function(e){
     var b=e.target.closest('button'); if(!b) return;
@@ -1053,15 +1437,180 @@
     r.readAsText(f); e.target.value='';
   });
   $('#resetBtn').addEventListener('click',function(){
-    confirmAction('ล้างรายการ หมวดหมู่ และเงินเดือนทั้งหมด','ล้างข้อมูลทั้งหมด',function(){
-      state.tx=[]; state.cats=defaultCats(); state.salary={def:0,months:{}};
+    confirmAction(isCloud()?'ลบรายการทั้งหมดของคุณ (รวมบนคลาวด์)':'ล้างรายการ หมวดหมู่ และเงินเดือนทั้งหมด','ล้างข้อมูลทั้งหมด',function(){
+      if(isCloud()){
+        state.tx=state.tx.filter(function(t){ return !isMine(t); });
+        enqueue({k:'wipe'});
+      } else {
+        state.tx=[]; state.cats=defaultCats(); state.salary={def:0,months:{}};
+      }
       save(); renderAll(); toast('ล้างข้อมูลแล้ว');
     });
   });
 
+  /* ================= UI: บัญชี / จับคู่ ================= */
+  function syncText(){
+    if(!isCloud()) return {cls:'off', txt:'ยังไม่ได้เข้าสู่ระบบ'};
+    if(cloud.outbox.length) return {cls:'pending', txt:'รอซิงก์ '+cloud.outbox.length+' รายการ'};
+    if(cloud.lastErr) return {cls:'pending', txt:'ซิงก์ไม่สำเร็จ จะลองใหม่อัตโนมัติ'};
+    return {cls:'', txt:'ซิงก์แล้ว'};
+  }
+  function renderAccount(){
+    var g=$('#accountGroup'), h=$('#accountHint');
+    if(!isCloud()){
+      g.innerHTML='<button class="row" data-act="auth"><span style="flex:1;color:var(--tint)">เข้าสู่ระบบ / สมัครสมาชิก</span></button>';
+      h.textContent='ตอนนี้ข้อมูลอยู่ในเครื่องนี้เท่านั้น เข้าสู่ระบบเพื่อสำรองขึ้นคลาวด์ และแชร์รายรับรายจ่ายกับแฟน';
+      return;
+    }
+    var s=syncText();
+    var email=(cloud.session.user&&cloud.session.user.email)||'';
+    g.innerHTML=
+      '<div class="row"><span style="flex:1">อีเมล</span><span style="color:var(--label-2);font-size:15px">'+esc(email)+'</span></div>'+
+      '<button class="row" data-act="invite"><span style="flex:1">ใช้ร่วมกับแฟน</span>'+
+        '<span style="color:var(--label-2);font-size:15px">'+(hasPartner()?esc(partnerName()):'ยังไม่ได้จับคู่')+'</span>'+
+        '<span class="chev"><svg width="8" height="13" viewBox="0 0 8 13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 1.5L6.5 6.5l-5 5"/></svg></span></button>'+
+      '<button class="row" data-act="sync"><span style="flex:1">สถานะข้อมูล</span>'+
+        '<i class="sync-dot '+s.cls+'"></i><span style="color:var(--label-2);font-size:15px">'+esc(s.txt)+'</span></button>'+
+      '<button class="row" data-act="signout"><span style="flex:1;color:var(--red)">ออกจากระบบ</span></button>';
+    h.textContent = hasPartner()
+      ? ('คุณกับ'+partnerName()+'เห็นรายการของกันและกัน แต่แก้ไขได้เฉพาะของตัวเอง')
+      : 'กด "ใช้ร่วมกับแฟน" เพื่อดูรหัสเชิญ หรือกรอกรหัสของอีกฝ่าย';
+  }
+  function renderSync(){ if(view.screen==='more') renderAccount(); }
+
+  $('#accountGroup').addEventListener('click',function(e){
+    var b=e.target.closest('[data-act]'); if(!b) return;
+    var a=b.dataset.act;
+    if(a==='auth') openAuth('in');
+    else if(a==='invite') openInvite();
+    else if(a==='sync'){ toast('กำลังซิงก์…'); silentSync(); }
+    else if(a==='signout'){
+      confirmAction('ออกจากระบบ? ข้อมูลบนคลาวด์ยังอยู่ครบ','ออกจากระบบ',function(){
+        signOutCloud().then(function(){ renderAll(); renderAccount(); toast('ออกจากระบบแล้ว'); });
+      });
+    }
+  });
+
+  /* ---------------- auth sheet ---------------- */
+  var authMode='in';
+  function setAuthMode(m){
+    authMode=m;
+    $('#authSeg').querySelectorAll('button').forEach(function(b){ b.setAttribute('aria-pressed',String(b.dataset.t===m)); });
+    $('#nameRow').style.display = m==='up' ? 'flex' : 'none';
+    $('#authTitle').textContent = m==='up' ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ';
+    $('#authSubmit').textContent = m==='up' ? 'สมัครสมาชิก' : 'เข้าสู่ระบบ';
+    $('#doAuth').textContent = m==='up' ? 'สมัคร' : 'เข้าสู่ระบบ';
+    $('#authPass').setAttribute('autocomplete', m==='up'?'new-password':'current-password');
+    $('#authErr').style.display='none';
+  }
+  segBind('#authSeg',function(t){ setAuthMode(t); });
+  function openAuth(m){ setAuthMode(m||'in'); $('#authErr').style.display='none'; showSheet('#authSheet'); }
+  $('#closeAuth').addEventListener('click',hideSheets);
+  $('#doAuth').addEventListener('click',function(){ $('#authSubmit').click(); });
+  function authError(msg){
+    var m=String(msg||'');
+    if(/Invalid login/i.test(m)) m='อีเมลหรือรหัสผ่านไม่ถูกต้อง';
+    else if(/already registered|already exists|user_already/i.test(m)) m='อีเมลนี้สมัครไว้แล้ว ลองเข้าสู่ระบบแทน';
+    else if(/Password should be at least|weak_password/i.test(m)) m='รหัสผ่านต้องยาวอย่างน้อย 6 ตัว';
+    else if(/rate limit|too many/i.test(m)) m='ลองใหม่อีกครั้งในอีกสักครู่';
+    else if(/Failed to fetch|NetworkError/i.test(m)) m='เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ต';
+    var el=$('#authErr'); el.textContent=m; el.style.display='block';
+  }
+
+  function afterLogin(snap){
+    return cloudPull()
+      .then(function(){ return migrateLocal(snap); })
+      .then(function(moved){ if(moved) return cloudPull().then(function(){ return moved; }); return moved; })
+      .then(function(moved){
+        loadOutbox(); flush();
+        view.scope = hasPartner() ? 'both' : 'me';
+        hideSheets(); renderAll(); renderAccount();
+        toast(moved ? 'ย้ายข้อมูลขึ้นคลาวด์แล้ว' : 'เข้าสู่ระบบแล้ว');
+      });
+  }
+
+  $('#authSubmit').addEventListener('click',function(){
+    var email=$('#authEmail').value.trim(), pass=$('#authPass').value, name=$('#authName').value.trim();
+    if(!email || email.indexOf('@')<0){ authError('กรอกอีเมลให้ถูกต้อง'); return; }
+    if(pass.length<6){ authError('รหัสผ่านต้องยาวอย่างน้อย 6 ตัว'); return; }
+    var snap=JSON.parse(JSON.stringify({tx:state.tx,cats:state.cats,salary:state.salary}));
+    var btn=$('#authSubmit'); btn.disabled=true; btn.style.opacity=.6;
+    var done=function(){ btn.disabled=false; btn.style.opacity=1; };
+
+    var p = authMode==='up'
+      ? signUp(email,pass,name||email.split('@')[0]).then(function(d){
+          if(d && d.access_token){ setSession(d); return afterLogin(snap); }
+          return signIn(email,pass).then(function(s){ setSession(s); return afterLogin(snap); })
+            .catch(function(){
+              authError('สมัครแล้ว กรุณากดยืนยันในอีเมลก่อน แล้วเข้าสู่ระบบอีกครั้ง');
+              setAuthMode('in');
+            });
+        })
+      : signIn(email,pass).then(function(s){ setSession(s); return afterLogin(snap); });
+
+    p.then(done).catch(function(e){ done(); authError(e.message); });
+  });
+
+  /* ---------------- invite sheet ---------------- */
+  function openInvite(){
+    $('#inviteCode').textContent = (cloud.household && cloud.household.invite_code) || '------';
+    $('#joinCode').value='';
+    $('#leaveWrap').hidden = !hasPartner();
+    showSheet('#inviteSheet');
+  }
+  $('#closeInvite').addEventListener('click',hideSheets);
+  $('#copyCode').addEventListener('click',function(){
+    var code=$('#inviteCode').textContent;
+    if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).catch(function(){});
+    toast('คัดลอกรหัส '+code+' แล้ว');
+  });
+  $('#doJoin').addEventListener('click',function(){
+    var code=$('#joinCode').value.trim().toUpperCase();
+    if(code.length<4){ toast('กรอกรหัสเชิญให้ครบ'); return; }
+    sbFetch('/rest/v1/rpc/join_household',{method:'POST',body:{p_code:code}})
+      .then(function(){ return cloudPull(); })
+      .then(function(){
+        view.scope='both'; hideSheets(); renderAll(); renderAccount();
+        toast(hasPartner()?('จับคู่กับ'+partnerName()+'แล้ว'):'เข้าร่วมแล้ว');
+      })
+      .catch(function(e){ toast(/ไม่พบ/.test(e.message)?'ไม่พบรหัสเชิญนี้':'เข้าร่วมไม่สำเร็จ'); });
+  });
+  $('#doLeave').addEventListener('click',function(){
+    confirmAction('แยกกระเป๋าออกจากกัน? จะไม่เห็นรายการของอีกฝ่ายอีก','แยกกระเป๋า',function(){
+      sbFetch('/rest/v1/rpc/leave_household',{method:'POST',body:{}})
+        .then(function(){ return cloudPull(); })
+        .then(function(){ view.scope='me'; hideSheets(); renderAll(); renderAccount(); toast('แยกกระเป๋าแล้ว'); })
+        .catch(function(){ toast('ทำรายการไม่สำเร็จ'); });
+    });
+  });
+
   /* ---------------- init ---------------- */
+  loadOutbox();
+  try{ var _ss=store.get(SKEY); if(_ss) cloud.session=JSON.parse(_ss); }catch(e){}
   load(); applyTheme(); go('home');
-  window.__app={state:state,save:save,render:renderAll,calc:calc};
+
+  function bootCloud(){
+    if(!cloud.session) return;
+    var now=Math.floor(Date.now()/1000);
+    var pre = (cloud.session.expires_at && cloud.session.expires_at < now+60) ? refreshSession() : Promise.resolve();
+    pre.then(function(){ return cloudPull(); })
+       .then(function(){
+         view.scope = hasPartner() ? 'both' : 'me';
+         renderAll(); renderAccount(); flush();
+       })
+       .catch(function(e){
+         if(e && (e.status===401 || e.status===403)){ setSession(null); cloud.profile=null; }
+         renderAccount();
+       });
+  }
+  bootCloud();
+
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden) silentSync(); });
+  window.addEventListener('online',function(){ flush(); silentSync(); });
+  setInterval(silentSync, 25000);
+
+  window.__app={state:state,save:save,render:renderAll,calc:calc,cloud:cloud,CLOUD:CLOUD,
+                isCloud:isCloud,pull:cloudPull,flush:flush,signOut:signOutCloud};
 
   /* ---------------- offline (service worker) ---------------- */
   if('serviceWorker' in navigator && location.protocol.indexOf('http')===0){
